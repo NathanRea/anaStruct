@@ -53,10 +53,13 @@ class SystemElements:
         self.supports_fixed = []
         self.supports_hinged = []
         self.supports_roll = []
+        self.supports_momentroll = []
+        self.supports_moment = []
         self.supports_spring_x = []
         self.supports_spring_z = []
         self.supports_spring_y = []
         self.supports_roll_direction = []
+        self.supports_momentroll_direction = []
 
         # save tuples of the arguments for copying purposes.
         self.supports_spring_args = []
@@ -447,58 +450,91 @@ class SystemElements:
         w, _ = np.linalg.eig(ss.reduced_system_matrix)
         return np.all(w > min_eigen)
 
+
+    def add_general_support(self, node_id, dofs):
+        """
+        Use a general support to be able to create all 7 supports (5 types)
+        :param node_id: (int/ list) Represents the nodes ID
+        :param    dofs: (list/ list of lists) Represents the 3 cardinal degrees of freedom
+        """
+        if not isinstance(node_id, collections.Iterable):
+            node_id = (node_id,)
+            # need to also make iterable so we can zip through both
+            dofs = (dofs,)
+        else:
+            # make dofs iterable if nodes_id is (like called from add_support_*)
+            # dofs[0] since [*,*,*] check in [[*,*,*],[*,*,*],...]
+            if not isinstance(dofs[0], collections.Iterable):
+                dofs = [list(dofs)]*len(node_id)
+        
+        for id_,dof_ in zip(node_id,dofs):
+            id_ = _negative_index_to_id(id_, self.node_map.keys())
+            system_components.util.support_check(self, id_)
+            # Parse DOFS into list of (id,dof) for set_disp_vector
+            disp_vector = [(id_,e_num) for e_num,e_val in enumerate(dof_,1) if e_val]
+            system_components.assembly.set_displacement_vector(self, disp_vector)
+
+            # add the support to the support list for the plotter
+            #self.supports_general.append(self.node_map[id_])
+            
+            # direction is needed for plotting
+            if dof_[0] and not dof_[1]:
+                # x = 1 & y = 0, (rotated 90deg)
+                direction = 1
+            else:
+                # x = 0 & y = 1, (non-rotated)
+                direction = 2
+            
+            if dof_ == [0,0,1]:
+                # Moment Resisting Support
+                self.supports_moment.append(self.node_map[id_])
+            elif dof_ == [0,1,0] or dof_ == [1,0,0]:
+                # Roller
+                self.supports_roll.append(self.node_map[id_])
+                self.supports_roll_direction.append(direction)
+            elif dof_ == [0,1,1] or dof_ == [1,0,1]:
+                # Moment Roller
+                self.supports_momentroll.append(self.node_map[id_])
+                self.supports_momentroll_direction.append(direction)
+            elif dof_ == [1,1,0]:
+                # Pin
+                self.supports_hinged.append(self.node_map[id_])
+            else:
+                # Fix
+                self.supports_fixed.append(self.node_map[id_])
+            
+        
+     
     def add_support_hinged(self, node_id):
         """
+        Left in for ease of use/backwards compatibility
         Model a hinged support at a given node.
 
         :param node_id: (int/ list) Represents the nodes ID
         """
-        if not isinstance(node_id, collections.Iterable):
-            node_id = (node_id,)
-
-        for id_ in node_id:
-            id_ = _negative_index_to_id(id_, self.node_map.keys())
-            system_components.util.support_check(self, id_)
-            system_components.assembly.set_displacement_vector(self, [(id_, 1), (id_, 2)])
-
-            # add the support to the support list for the plotter
-            self.supports_hinged.append(self.node_map[id_])
-
+        self.add_general_support(node_id, [1,1,0])
+     
     def add_support_roll(self, node_id, direction=2):
         """
+        Left in for ease of use/backwards compatibility
         Adds a rolling support at a given node.
-
+        
         :param node_id: (int/ list) Represents the nodes ID
         :param direction: (int/ list) Represents the direction that is fixed: x = 1, y = 2
         """
-        if not isinstance(node_id, collections.Iterable):
-            node_id = (node_id,)
-
-        for id_ in node_id:
-            id_ = _negative_index_to_id(id_, self.node_map.keys())
-            system_components.util.support_check(self, id_)
-            system_components.assembly.set_displacement_vector(self, [(id_, direction)])
-
-            # add the support to the support list for the plotter
-            self.supports_roll.append(self.node_map[id_])
-            self.supports_roll_direction.append(direction)
+        if direction == 1:
+            self.add_general_support(node_id, [1,0,0])
+        else:
+            self.add_general_support(node_id, [0,1,0])
 
     def add_support_fixed(self, node_id):
         """
+        Left in for ease of use/backwards compatibility
         Add a fixed support at a given node.
 
         :param node_id: (int/ list) Represents the nodes ID
         """
-        if not isinstance(node_id, collections.Iterable):
-            node_id = (node_id,)
-
-        for id_ in node_id:
-            id_ = _negative_index_to_id(id_, self.node_map.keys())
-            system_components.util.support_check(self, id_)
-            system_components.assembly.set_displacement_vector(self, [(id_, 1), (id_, 2), (id_, 3)])
-
-            # add the support to the support list for the plotter
-            self.supports_fixed.append(self.node_map[id_])
+        self.add_general_support(node_id, [1,1,1])
 
     def add_support_spring(self, node_id, translation, k, roll=False):
         """
@@ -969,10 +1005,14 @@ class SystemElements:
         # supports
         for node, direction in zip(self.supports_roll, self.supports_roll_direction):
             ss.add_support_roll((node.id - 1) * n + 1, direction)
+        for node, direction in zip(self.supports_momentroll, self.supports_momentroll_direction):
+            ss.add_support_momentroll((node.id - 1) * n + 1, direction)
         for node in self.supports_fixed:
             ss.add_support_fixed((node.id - 1) * n + 1)
         for node in self.supports_hinged:
             ss.add_support_hinged((node.id - 1) * n + 1)
+        for node in self.moment:
+            ss.add_support_moment((node.id - 1) * n + 1)
         for args in self.supports_spring_args:
             ss.add_support_spring((args[0] - 1) * n + 1, *args[1:])
 

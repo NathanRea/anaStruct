@@ -22,7 +22,7 @@ class Plotter(PlottingValues):
         self.fig = plt.figure(figsize=figsize)
         self.one_fig = self.fig.add_subplot(111)
         plt.tight_layout()
-
+    
     def __fixed_support_patch(self, max_val):
         """
         :param max_val: max scale of the plot
@@ -32,6 +32,19 @@ class Plotter(PlottingValues):
             support_patch = mpatches.Rectangle((node.vertex.x - width * 0.5, - node.vertex.z - width * 0.5),
                                                width, height, color='r', zorder=9)
             self.one_fig.add_patch(support_patch)
+
+    def __moment_support_patch(self, max_val):
+        """
+        :param max_val: max scale of the plot
+        """
+        radius = PATCH_SIZE * max_val
+        for node in self.system.supports_moment:
+            xpr = node.vertex.x + radius
+            xmr = node.vertex.x - radius
+            ypr = node.vertex.z + radius
+            ymr = node.vertex.z - radius
+            self.one_fig.plot([xmr, xpr], [ypr, ymr], color='r')
+            self.one_fig.plot([xmr, xpr], [ymr, ypr], color='r')
 
     def __hinged_support_patch(self, max_val):
         """
@@ -48,11 +61,7 @@ class Plotter(PlottingValues):
         :param max_val: max scale of the plot
         """
         radius = PATCH_SIZE * max_val
-        count = 0
-        for node in self.system.supports_roll:
-
-            direction = self.system.supports_roll_direction[count]
-
+        for node,direction in zip(self.system.supports_roll,self.system.supports_roll_direction):
             if direction == 2:  # horizontal roll
                 support_patch = mpatches.RegularPolygon((node.vertex.x, node.vertex.y - radius),
                                                         numVertices=3, radius=radius, color='r', zorder=9)
@@ -77,8 +86,27 @@ class Plotter(PlottingValues):
                 y = node.vertex.y - radius
                 self.one_fig.plot([node.vertex.x + radius * 1.5, node.vertex.x + radius * 1.5], [y, y + 2 * radius],
                                   color='r')
-            count += 1
-
+    
+    def __momentroll_support_patch(self, max_val):
+        """
+        :param max_val: max scale of the plot
+        """
+        radius = width = height = PATCH_SIZE * max_val
+        for node,direction in zip(self.system.supports_momentroll,self.system.supports_momentroll_direction):
+            if direction == 2:  # horizontal roll
+                support_patch = mpatches.Rectangle((node.vertex.x - width, - node.vertex.z - width * 0.5),
+                                               width*2, height, color='r', zorder=9)
+                self.one_fig.add_patch(support_patch)
+                y = -node.vertex.z - 2 * radius/2
+                self.one_fig.plot([node.vertex.x - radius, node.vertex.x + radius], [y, y], color='r')
+            elif direction == 1:  # vertical roll
+                support_patch = mpatches.Rectangle((node.vertex.x - width * 0.5, - node.vertex.z - width * 0.5),
+                                               width, height*2, color='r', zorder=9)
+                self.one_fig.add_patch(support_patch)
+                y = node.vertex.y - radius/2
+                self.one_fig.plot([node.vertex.x + radius, node.vertex.x + radius], [y, y + 2 * radius],
+                                  color='r')
+    
     def __rotating_spring_support_patch(self, max_val):
         """
         :param max_val: max scale of the plot
@@ -279,6 +307,8 @@ class Plotter(PlottingValues):
             self.__fixed_support_patch(max_plot_range * scale)
             self.__hinged_support_patch(max_plot_range * scale)
             self.__roll_support_patch(max_plot_range * scale)
+            self.__momentroll_support_patch(max_plot_range * scale)
+            self.__moment_support_patch(max_plot_range * scale)
             self.__rotating_spring_support_patch(max_plot_range * scale)
             self.__spring_support_patch(max_plot_range * scale)
 
